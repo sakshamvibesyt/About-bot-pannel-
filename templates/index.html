@@ -1,232 +1,517 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
+
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta charset="utf-8">
+
+    <meta
+        name="viewport"
+        content="width=device-width,initial-scale=1,viewport-fit=cover"
+    >
+
+    <meta
+        name="theme-color"
+        content="#07070d"
+    >
+
+    <meta
+        http-equiv="Cache-Control"
+        content="no-cache, no-store, must-revalidate"
+    >
+
+    <meta
+        http-equiv="Pragma"
+        content="no-cache"
+    >
+
+    <meta
+        http-equiv="Expires"
+        content="0"
+    >
+
     <title>Saksham Panel</title>
 
-    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    <link
+        rel="stylesheet"
+        href="{{ url_for('static', filename='style.css') }}?v={{ cache_version }}"
+    >
 </head>
 
 <body>
 
-<div class="app">
+<div class="bg-grid"></div>
 
-    <!-- Header -->
-    <header class="topbar">
-        <div>
-            <div class="brand">SAKSHAM <span>PANEL</span></div>
-            <div class="subtitle">Premium Control Center</div>
+<div class="glow glow-a"></div>
+<div class="glow glow-b"></div>
+
+<div
+    id="toast"
+    class="toast"
+></div>
+
+
+<main class="app">
+
+    <!-- ================================================= -->
+    <!-- LOGIN / REGISTER -->
+    <!-- ================================================= -->
+
+    <section
+        id="authView"
+        class="auth-view"
+    >
+
+        <div class="brand">
+
+            <div class="brand-mark">
+                S
+            </div>
+
+            <div>
+
+                <h1>
+                    SAKSHAM
+                    <span>PANEL</span>
+                </h1>
+
+                <p>
+                    Premium community dashboard
+                </p>
+
+            </div>
+
         </div>
 
-        <button class="logout-btn" onclick="logout()">Logout</button>
-    </header>
 
-    <!-- User Card -->
-    <section class="profile-card">
-        <div class="avatar" id="avatar">S</div>
+        <div class="auth-card glass">
 
-        <div class="profile-info">
-            <h2 id="username">Loading...</h2>
-            <p id="telegramUsername">@telegram</p>
-            <span class="status">● ONLINE</span>
+            <div class="tabs">
+
+                <button
+                    type="button"
+                    class="tab active"
+                    data-auth="login"
+                >
+                    LOGIN
+                </button>
+
+                <button
+                    type="button"
+                    class="tab"
+                    data-auth="register"
+                >
+                    CREATE ACCOUNT
+                </button>
+
+            </div>
+
+
+            <form id="authForm">
+
+                <label>
+                    Username
+                </label>
+
+                <input
+                    id="username"
+                    type="text"
+                    autocomplete="username"
+                    placeholder="Enter username"
+                    required
+                >
+
+
+                <label>
+                    Password
+                </label>
+
+                <input
+                    id="password"
+                    type="password"
+                    autocomplete="current-password"
+                    placeholder="Enter password"
+                    required
+                >
+
+
+                <div
+                    id="telegramFields"
+                    class="optional hidden"
+                >
+
+                    <label>
+                        Telegram username
+                        <small>(optional)</small>
+                    </label>
+
+                    <input
+                        id="telegramUsername"
+                        type="text"
+                        placeholder="@yourusername"
+                    >
+
+
+                    <label>
+                        Telegram ID
+                        <small>(optional)</small>
+                    </label>
+
+                    <input
+                        id="telegramId"
+                        type="text"
+                        placeholder="Telegram ID"
+                    >
+
+                </div>
+
+
+                <button
+                    class="primary-btn"
+                    type="submit"
+                >
+
+                    <span id="authButtonText">
+                        LOGIN
+                    </span>
+
+                    <b>
+                        →
+                    </b>
+
+                </button>
+
+            </form>
+
+
+            <p class="auth-note">
+                Create your account once and use the same
+                username and password whenever you return.
+            </p>
+
         </div>
+
     </section>
 
-    <!-- Stats -->
-    <section class="stats-grid">
 
-        <div class="stat-card">
-            <div class="stat-icon">🪙</div>
-            <div>
-                <small>COINS</small>
-                <h2 id="coins">0</h2>
+    <!-- ================================================= -->
+    <!-- PANEL -->
+    <!-- ================================================= -->
+
+    <section
+        id="panelView"
+        class="panel-view hidden"
+    >
+
+        <header class="topbar">
+
+            <div class="brand compact">
+
+                <div class="brand-mark">
+                    S
+                </div>
+
+                <div>
+
+                    <h1>
+                        SAKSHAM
+                        <span>PANEL</span>
+                    </h1>
+
+                    <p id="welcome">
+                        Welcome
+                    </p>
+
+                </div>
+
             </div>
-        </div>
 
-        <div class="stat-card">
-            <div class="stat-icon">⚡</div>
+
+            <button
+                type="button"
+                class="icon-btn"
+                id="logoutBtn"
+                title="Logout"
+            >
+                ↪
+            </button>
+
+        </header>
+
+
+        <section class="hero-card glass">
+
             <div>
-                <small>XP</small>
-                <h2 id="xp">0</h2>
-            </div>
-        </div>
 
-        <div class="stat-card">
-            <div class="stat-icon">🏆</div>
+                <p class="eyebrow">
+                    YOUR ACCOUNT
+                </p>
+
+                <h2 id="displayUsername">
+                    @username
+                </h2>
+
+                <p id="telegramLabel">
+                    Telegram not linked
+                </p>
+
+            </div>
+
+            <div
+                class="status-pill"
+                id="statusPill"
+            >
+                MEMBER
+            </div>
+
+        </section>
+
+
+        <section class="stats-grid">
+
+            <article class="stat glass">
+
+                <span>🪙</span>
+
+                <small>
+                    Coins
+                </small>
+
+                <strong id="coins">
+                    0
+                </strong>
+
+            </article>
+
+
+            <article class="stat glass">
+
+                <span>⭐</span>
+
+                <small>
+                    Level
+                </small>
+
+                <strong id="level">
+                    1
+                </strong>
+
+            </article>
+
+
+            <article class="stat glass">
+
+                <span>🏆</span>
+
+                <small>
+                    Rank
+                </small>
+
+                <strong id="rank">
+                    —
+                </strong>
+
+            </article>
+
+
+            <article class="stat glass">
+
+                <span>💎</span>
+
+                <small>
+                    Status
+                </small>
+
+                <strong id="vip">
+                    MEMBER
+                </strong>
+
+            </article>
+
+        </section>
+
+
+        <section class="section-head">
+
             <div>
-                <small>RANK</small>
-                <h2 id="rank">#0</h2>
+
+                <p class="eyebrow">
+                    QUICK ACCESS
+                </p>
+
+                <h3>
+                    Everything in one place
+                </h3>
+
             </div>
-        </div>
 
-        <div class="stat-card">
-            <div class="stat-icon">👑</div>
-            <div>
-                <small>LEVEL</small>
-                <h2 id="level">1</h2>
-            </div>
-        </div>
+        </section>
 
-    </section>
 
-    <!-- Membership -->
-    <section class="membership-card">
-        <div>
-            <small>MEMBERSHIP</small>
-            <h2 id="membership">FREE MEMBER</h2>
-        </div>
+        <section class="menu-grid">
 
-        <button onclick="openShop()">UPGRADE</button>
-    </section>
-
-    <!-- Quick Actions -->
-    <section class="section">
-
-        <div class="section-title">
-            <h2>Quick Actions</h2>
-            <span>⚡</span>
-        </div>
-
-        <div class="action-grid">
-
-            <button class="action-btn" onclick="openShop()">
+            <button
+                type="button"
+                class="menu-card glass"
+                data-page="shop"
+            >
                 <span>🛒</span>
                 <b>Shop</b>
-                <small>Buy rewards</small>
+                <small>Spend coins</small>
             </button>
 
-            <button class="action-btn" onclick="showRank()">
-                <span>🏆</span>
-                <b>Leaderboard</b>
-                <small>View your rank</small>
-            </button>
 
-            <button class="action-btn" onclick="showRewards()">
+            <button
+                type="button"
+                class="menu-card glass"
+                data-page="rewards"
+            >
                 <span>🎁</span>
                 <b>Rewards</b>
-                <small>Claim rewards</small>
+                <small>Daily rewards</small>
             </button>
 
-            <button class="action-btn" onclick="showReferral()">
+
+            <button
+                type="button"
+                class="menu-card glass"
+                data-page="missions"
+            >
+                <span>🎯</span>
+                <b>Missions</b>
+                <small>Earn XP</small>
+            </button>
+
+
+            <button
+                type="button"
+                class="menu-card glass"
+                data-page="referral"
+            >
                 <span>👥</span>
                 <b>Referral</b>
                 <small>Invite friends</small>
             </button>
 
-        </div>
 
-    </section>
-
-    <!-- Shop -->
-    <section class="section" id="shopSection">
-
-        <div class="section-title">
-            <h2>Shop</h2>
-            <span>🛒</span>
-        </div>
-
-        <div class="shop-grid" id="shopItems">
-
-            <div class="shop-item">
-                <div class="shop-icon">💎</div>
-                <h3>VIP</h3>
-                <p>Unlock VIP membership</p>
-                <button onclick="buyItem('vip')">
-                    Buy • <span id="vipPrice">500</span> 🪙
-                </button>
-            </div>
-
-            <div class="shop-item">
-                <div class="shop-icon">👑</div>
-                <h3>ELITE</h3>
-                <p>Unlock Elite membership</p>
-                <button onclick="buyItem('elite')">
-                    Buy • <span id="elitePrice">1000</span> 🪙
-                </button>
-            </div>
-
-            <div class="shop-item">
-                <div class="shop-icon">✨</div>
-                <h3>Premium Badge</h3>
-                <p>Show your premium badge</p>
-                <button onclick="buyItem('badge')">
-                    Buy • <span id="badgePrice">750</span> 🪙
-                </button>
-            </div>
-
-        </div>
-
-    </section>
-
-    <!-- Activity -->
-    <section class="section">
-
-        <div class="section-title">
-            <h2>Recent Activity</h2>
-            <span>📊</span>
-        </div>
-
-        <div class="activity-list" id="activityList">
-            <div class="activity-item">
-                <span>🔄</span>
-                <div>
-                    <b>Account loaded</b>
-                    <small>Your panel is ready</small>
-                </div>
-            </div>
-        </div>
-
-    </section>
-
-    <!-- Account -->
-    <section class="section">
-
-        <div class="section-title">
-            <h2>Account</h2>
-            <span>⚙️</span>
-        </div>
-
-        <div class="account-box">
-
-            <button onclick="changePassword()">
-                🔐 Change Password
+            <button
+                type="button"
+                class="menu-card glass"
+                data-page="stats"
+            >
+                <span>📊</span>
+                <b>Activity</b>
+                <small>Your history</small>
             </button>
 
-            <button onclick="showReferral()">
-                🔗 My Referral Code
+
+            <button
+                type="button"
+                class="menu-card glass"
+                data-page="settings"
+            >
+                <span>⚙️</span>
+                <b>Settings</b>
+                <small>Account settings</small>
             </button>
 
-            <button onclick="logout()">
-                🚪 Logout
+        </section>
+
+
+        <section
+            id="contentArea"
+            class="content-area"
+        ></section>
+
+
+        <footer class="footer">
+
+            <div class="owner">
+                Owner
+                <strong>
+                    @sakshamvenus
+                </strong>
+            </div>
+
+            <div class="footer-links">
+
+                <span>
+                    SAKSHAM PANEL
+                </span>
+
+                <span>
+                    •
+                </span>
+
+                <span>
+                    Secure account system
+                </span>
+
+            </div>
+
+        </footer>
+
+
+        <nav class="bottom-nav glass">
+
+            <button
+                type="button"
+                class="nav active"
+                data-page="home"
+            >
+                ⌂
+                <small>
+                    Home
+                </small>
             </button>
 
-        </div>
+
+            <button
+                type="button"
+                class="nav"
+                data-page="shop"
+            >
+                🛒
+                <small>
+                    Shop
+                </small>
+            </button>
+
+
+            <button
+                type="button"
+                class="nav"
+                data-page="stats"
+            >
+                📊
+                <small>
+                    Stats
+                </small>
+            </button>
+
+
+            <button
+                type="button"
+                class="nav"
+                data-page="settings"
+            >
+                ⚙️
+                <small>
+                    Settings
+                </small>
+            </button>
+
+        </nav>
 
     </section>
 
-    <!-- Modal -->
-    <div class="modal" id="modal">
-        <div class="modal-box">
+</main>
 
-            <button class="close-btn" onclick="closeModal()">×</button>
 
-            <h2 id="modalTitle">Saksham Panel</h2>
+<script src="https://telegram.org/js/telegram-web-app.js"></script>
 
-            <div id="modalContent"></div>
-
-        </div>
-    </div>
-
-    <!-- Footer -->
-    <footer>
-        <p>Powered by <b>Saksham Panel</b></p>
-        <p class="owner">@sakshamvenus</p>
-    </footer>
-
-</div>
-
-<script src="{{ url_for('static', filename='app.js') }}"></script>
+<script
+    src="{{ url_for('static', filename='app.js') }}?v={{ cache_version }}"
+></script>
 
 </body>
 </html>
