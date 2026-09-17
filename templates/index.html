@@ -1,0 +1,232 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Saksham Panel</title>
+
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+
+<body>
+
+<div class="app">
+
+    <!-- Header -->
+    <header class="topbar">
+        <div>
+            <div class="brand">SAKSHAM <span>PANEL</span></div>
+            <div class="subtitle">Premium Control Center</div>
+        </div>
+
+        <button class="logout-btn" onclick="logout()">Logout</button>
+    </header>
+
+    <!-- User Card -->
+    <section class="profile-card">
+        <div class="avatar" id="avatar">S</div>
+
+        <div class="profile-info">
+            <h2 id="username">Loading...</h2>
+            <p id="telegramUsername">@telegram</p>
+            <span class="status">● ONLINE</span>
+        </div>
+    </section>
+
+    <!-- Stats -->
+    <section class="stats-grid">
+
+        <div class="stat-card">
+            <div class="stat-icon">🪙</div>
+            <div>
+                <small>COINS</small>
+                <h2 id="coins">0</h2>
+            </div>
+        </div>
+
+        <div class="stat-card">
+            <div class="stat-icon">⚡</div>
+            <div>
+                <small>XP</small>
+                <h2 id="xp">0</h2>
+            </div>
+        </div>
+
+        <div class="stat-card">
+            <div class="stat-icon">🏆</div>
+            <div>
+                <small>RANK</small>
+                <h2 id="rank">#0</h2>
+            </div>
+        </div>
+
+        <div class="stat-card">
+            <div class="stat-icon">👑</div>
+            <div>
+                <small>LEVEL</small>
+                <h2 id="level">1</h2>
+            </div>
+        </div>
+
+    </section>
+
+    <!-- Membership -->
+    <section class="membership-card">
+        <div>
+            <small>MEMBERSHIP</small>
+            <h2 id="membership">FREE MEMBER</h2>
+        </div>
+
+        <button onclick="openShop()">UPGRADE</button>
+    </section>
+
+    <!-- Quick Actions -->
+    <section class="section">
+
+        <div class="section-title">
+            <h2>Quick Actions</h2>
+            <span>⚡</span>
+        </div>
+
+        <div class="action-grid">
+
+            <button class="action-btn" onclick="openShop()">
+                <span>🛒</span>
+                <b>Shop</b>
+                <small>Buy rewards</small>
+            </button>
+
+            <button class="action-btn" onclick="showRank()">
+                <span>🏆</span>
+                <b>Leaderboard</b>
+                <small>View your rank</small>
+            </button>
+
+            <button class="action-btn" onclick="showRewards()">
+                <span>🎁</span>
+                <b>Rewards</b>
+                <small>Claim rewards</small>
+            </button>
+
+            <button class="action-btn" onclick="showReferral()">
+                <span>👥</span>
+                <b>Referral</b>
+                <small>Invite friends</small>
+            </button>
+
+        </div>
+
+    </section>
+
+    <!-- Shop -->
+    <section class="section" id="shopSection">
+
+        <div class="section-title">
+            <h2>Shop</h2>
+            <span>🛒</span>
+        </div>
+
+        <div class="shop-grid" id="shopItems">
+
+            <div class="shop-item">
+                <div class="shop-icon">💎</div>
+                <h3>VIP</h3>
+                <p>Unlock VIP membership</p>
+                <button onclick="buyItem('vip')">
+                    Buy • <span id="vipPrice">500</span> 🪙
+                </button>
+            </div>
+
+            <div class="shop-item">
+                <div class="shop-icon">👑</div>
+                <h3>ELITE</h3>
+                <p>Unlock Elite membership</p>
+                <button onclick="buyItem('elite')">
+                    Buy • <span id="elitePrice">1000</span> 🪙
+                </button>
+            </div>
+
+            <div class="shop-item">
+                <div class="shop-icon">✨</div>
+                <h3>Premium Badge</h3>
+                <p>Show your premium badge</p>
+                <button onclick="buyItem('badge')">
+                    Buy • <span id="badgePrice">750</span> 🪙
+                </button>
+            </div>
+
+        </div>
+
+    </section>
+
+    <!-- Activity -->
+    <section class="section">
+
+        <div class="section-title">
+            <h2>Recent Activity</h2>
+            <span>📊</span>
+        </div>
+
+        <div class="activity-list" id="activityList">
+            <div class="activity-item">
+                <span>🔄</span>
+                <div>
+                    <b>Account loaded</b>
+                    <small>Your panel is ready</small>
+                </div>
+            </div>
+        </div>
+
+    </section>
+
+    <!-- Account -->
+    <section class="section">
+
+        <div class="section-title">
+            <h2>Account</h2>
+            <span>⚙️</span>
+        </div>
+
+        <div class="account-box">
+
+            <button onclick="changePassword()">
+                🔐 Change Password
+            </button>
+
+            <button onclick="showReferral()">
+                🔗 My Referral Code
+            </button>
+
+            <button onclick="logout()">
+                🚪 Logout
+            </button>
+
+        </div>
+
+    </section>
+
+    <!-- Modal -->
+    <div class="modal" id="modal">
+        <div class="modal-box">
+
+            <button class="close-btn" onclick="closeModal()">×</button>
+
+            <h2 id="modalTitle">Saksham Panel</h2>
+
+            <div id="modalContent"></div>
+
+        </div>
+    </div>
+
+    <!-- Footer -->
+    <footer>
+        <p>Powered by <b>Saksham Panel</b></p>
+        <p class="owner">@sakshamvenus</p>
+    </footer>
+
+</div>
+
+<script src="{{ url_for('static', filename='app.js') }}"></script>
+
+</body>
+</html>
