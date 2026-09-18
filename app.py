@@ -483,6 +483,39 @@ def login():
             "error": "Invalid username or password."
         }), 401
 
+    # When opened as a Telegram Web App, bind the existing panel
+    # account to the Telegram identity supplied by the Web App.
+    telegram_id = str(data.get("telegram_id", "")).strip() or None
+    telegram_username = str(data.get("telegram_username", "")).strip() or None
+
+    if telegram_id:
+        existing = conn.execute(
+            "SELECT id, username FROM users WHERE telegram_id=? AND id!=?",
+            (telegram_id, user["id"])
+        ).fetchone()
+
+        if existing:
+            return jsonify({
+                "ok": False,
+                "error": "This Telegram account is already linked to another panel account."
+            }), 409
+
+        if user["telegram_id"] and str(user["telegram_id"]) != telegram_id:
+            return jsonify({
+                "ok": False,
+                "error": "This panel account is already linked to a different Telegram account."
+            }), 409
+
+        conn.execute(
+            "UPDATE users SET telegram_id=?, telegram_username=? WHERE id=?",
+            (telegram_id, telegram_username or user["telegram_username"], user["id"])
+        )
+
+        user = conn.execute(
+            "SELECT * FROM users WHERE id=?",
+            (user["id"],)
+        ).fetchone()
+
     # Clear any old session first.
     session.clear()
 
