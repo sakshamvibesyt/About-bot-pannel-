@@ -111,12 +111,45 @@ def init_db():
     columns = {row[1] for row in conn.execute("PRAGMA table_info(users)").fetchall()}
     if "coin_chat_id" not in columns:
         conn.execute("ALTER TABLE users ADD COLUMN coin_chat_id INTEGER")
-    if "bot_item_id" not in {row[1] for row in conn.execute("PRAGMA table_info(shop_items)").fetchall()}:
-        conn.execute("ALTER TABLE shop_items ADD COLUMN bot_item_id INTEGER")
 
-    # The Telegram bot is the single source of truth for shop items.
-    # Keep the old panel rows only for compatibility with existing purchase history.
-    conn.execute("UPDATE shop_items SET active=0 WHERE bot_item_id IS NULL")
+    count = conn.execute(
+        "SELECT COUNT(*) FROM shop_items"
+    ).fetchone()[0]
+
+    if count == 0:
+        conn.executemany(
+            """
+            INSERT INTO shop_items
+            (name, description, price, item_type)
+            VALUES (?, ?, ?, ?)
+            """,
+            [
+                (
+                    "VIP",
+                    "Activate VIP status on your panel account.",
+                    500,
+                    "vip"
+                ),
+                (
+                    "ELITE",
+                    "Activate Elite status on your panel account.",
+                    1500,
+                    "elite"
+                ),
+                (
+                    "Custom Title",
+                    "Unlock a custom title slot.",
+                    1000,
+                    "title"
+                ),
+                (
+                    "Mystery Reward",
+                    "Redeem a surprise reward.",
+                    750,
+                    "mystery"
+                ),
+            ]
+        )
 
     conn.commit()
     conn.close()
@@ -229,20 +262,57 @@ def user_coin_chat_id(user):
 
 
 def wallet_for_user(user):
+    """Return the bot wallet without making authentication depend on the bot.
+
+    The panel account is stored in its own database. A temporary bot/API outage
+    must not turn a successful register/login into an HTTP 500 after the user
+    row has already been committed.
+    """
     if not user or not user["telegram_id"]:
-        return {"chat_id": None, "balance": 0, "vip": False, "elite": False, "groups": []}
-    groups = bot_request(
-        "/panel-api/groups",
-        query={"user_id": int(user["telegram_id"])},
-    ).get("groups", [])
-    chat_id = user_coin_chat_id(user)
-    if not chat_id:
-        return {"chat_id": None, "balance": 0, "vip": False, "elite": False, "groups": groups}
-    result = bot_request(
-        "/panel-api/wallet",
-        query={"chat_id": int(chat_id), "user_id": int(user["telegram_id"])},
-    )
-    return {**result, "groups": groups}
+        return {
+            "chat_id": None,
+            "balance": int(user["coins"]) if user else 0,
+            "vip": bool(user["vip"]) if user else False,
+            "elite": bool(user["elite"]) if user else False,
+            "groups": [],
+            "wallet_online": False,
+        }
+
+    try:
+        groups = bot_request(
+            "/panel-api/groups",
+            query={"user_id": int(user["telegram_id"])},
+        ).get("groups", [])
+        chat_id = user_coin_chat_id(user)
+        if not chat_id:
+            return {
+                "chat_id": None,
+                "balance": int(user["coins"]),
+                "vip": bool(user["vip"]),
+                "elite": bool(user["elite"]),
+                "groups": groups,
+                "wallet_online": True,
+            }
+        result = bot_request(
+            "/panel-api/wallet",
+            query={
+                "chat_id": int(chat_id),
+                "user_id": int(user["telegram_id"]),
+            },
+        )
+        return {**result, "groups": groups, "wallet_online": True}
+    except (RuntimeError, ValueError, TypeError, KeyError) as exc:
+        # Authentication remains usable when the bot service is temporarily
+        # unavailable. Do not present the stale local coins as authoritative.
+        return {
+            "chat_id": user["coin_chat_id"],
+            "balance": int(user["coins"]),
+            "vip": bool(user["vip"]),
+            "elite": bool(user["elite"]),
+            "groups": [],
+            "wallet_online": False,
+            "wallet_error": str(exc),
+        }
 
 
 def serialize_user(user, wallet=None):
@@ -263,6 +333,8 @@ def serialize_user(user, wallet=None):
         "level": user["level"],
         "vip": bool(wallet.get("vip", user["vip"])),
         "elite": bool(wallet.get("elite", user["elite"])),
+        "wallet_online": bool(wallet.get("wallet_online", True)),
+        "wallet_warning": wallet.get("wallet_error"),
         "created_at": user["created_at"],
     }
 
@@ -573,15 +645,18 @@ def me():
             "error": "SESSION_EXPIRED"
         }), 401
 
-    try:
-        wallet = wallet_for_user(user)
-    except RuntimeError as exc:
-        return jsonify({"ok": False, "error": str(exc)}), 503
+    wallet = wallet_for_user(user)
 
-    return jsonify({
+    response = {
         "ok": True,
         "user": serialize_user(user, wallet)
-    })
+    }
+    if not wallet.get("wallet_online", True):
+        response["wallet_warning"] = wallet.get(
+            "wallet_error",
+            "Telegram wallet is temporarily unavailable."
+        )
+    return jsonify(response)
 
 
 @app.get("/api/groups")
@@ -629,63 +704,30 @@ def select_group():
 # SHOP
 # =========================================================
 
-def sync_bot_shop_items():
-    """Mirror the bot's live coin_shop into the panel cache.
-
-    The bot remains the source of truth for names, prices and rewards.
-    """
-    result = bot_request("/panel-api/shop/items")
-    items = result.get("items", [])
-    conn = db()
-
-    for item in items:
-        bot_item_id = int(item["item_id"])
-        existing = conn.execute(
-            "SELECT id FROM shop_items WHERE bot_item_id=?",
-            (bot_item_id,),
-        ).fetchone()
-        values = (
-            item["name"],
-            item.get("description", ""),
-            int(item["price"]),
-            str(item.get("reward_type", "request")),
-        )
-        if existing:
-            conn.execute(
-                "UPDATE shop_items SET name=?,description=?,price=?,item_type=?,active=1 WHERE id=?",
-                (*values, existing["id"]),
-            )
-        else:
-            conn.execute(
-                "INSERT INTO shop_items(name,description,price,item_type,active,bot_item_id) VALUES(?,?,?,?,1,?)",
-                (*values, bot_item_id),
-            )
-
-    conn.commit()
-    return items
-
-
 @app.get("/api/shop")
 @login_required
 def shop():
 
-    try:
-        sync_bot_shop_items()
-    except (ValueError, RuntimeError) as exc:
-        return jsonify({"ok": False, "error": str(exc)}), 503
-
     rows = db().execute(
         """
-        SELECT id, name, description, price, item_type, bot_item_id
+        SELECT
+            id,
+            name,
+            description,
+            price,
+            item_type
         FROM shop_items
-        WHERE active=1 AND bot_item_id IS NOT NULL
-        ORDER BY price, id
+        WHERE active=1
+        ORDER BY price
         """
     ).fetchall()
 
     return jsonify({
         "ok": True,
-        "items": [dict(row) for row in rows]
+        "items": [
+            dict(row)
+            for row in rows
+        ]
     })
 
 
@@ -702,16 +744,13 @@ def buy():
 
     conn = db()
     item = conn.execute(
-        "SELECT * FROM shop_items WHERE id=? AND active=1 AND bot_item_id IS NOT NULL",
-        (item_id,),
+        "SELECT * FROM shop_items WHERE id=? AND active=1",
+        (item_id,)
     ).fetchone()
     if not item:
         return jsonify({"ok": False, "error": "Item not found."}), 404
 
-    user = conn.execute(
-        "SELECT * FROM users WHERE id=?",
-        (session["user_id"],),
-    ).fetchone()
+    user = conn.execute("SELECT * FROM users WHERE id=?", (session["user_id"],)).fetchone()
     if not user or not user["telegram_id"]:
         return jsonify({"ok": False, "error": "Telegram account is not linked."}), 400
 
@@ -720,65 +759,53 @@ def buy():
         return jsonify({"ok": False, "error": "Select a Telegram group first."}), 400
 
     try:
-        result = bot_request(
-            "/panel-api/shop/buy",
+        debit = bot_request(
+            "/panel-api/wallet/debit",
             method="POST",
             payload={
                 "chat_id": int(chat_id),
                 "user_id": int(user["telegram_id"]),
-                "item_id": int(item["bot_item_id"]),
+                "amount": int(item["price"]),
             },
         )
     except RuntimeError as exc:
-        error = str(exc)
-        status = 400 if error in {"NOT_ENOUGH_COINS", "ITEM_NOT_FOUND", "GROUP_NOT_LINKED"} else 503
-        messages = {
-            "NOT_ENOUGH_COINS": "Not enough coins.",
-            "ITEM_NOT_FOUND": "This shop item is unavailable.",
-            "GROUP_NOT_LINKED": "Select a linked Telegram group first.",
-        }
-        return jsonify({"ok": False, "error": messages.get(error, error)}), status
+        status = 400 if str(exc) == "NOT_ENOUGH_COINS" else 503
+        return jsonify({"ok": False, "error": "Not enough coins." if status == 400 else str(exc)}), status
 
-    # Keep panel purchase history/statistics, while the bot remains the source
-    # of truth for the actual purchase and reward.
     try:
+        if item["item_type"] == "vip":
+            conn.execute("UPDATE users SET vip=1 WHERE id=?", (user["id"],))
+        elif item["item_type"] == "elite":
+            conn.execute("UPDATE users SET elite=1 WHERE id=?", (user["id"],))
+
         conn.execute(
             "INSERT INTO purchases(user_id,item_id,price,created_at) VALUES(?,?,?,?)",
-            (
-                user["id"],
-                item["id"],
-                int(item["price"]),
-                datetime.utcnow().isoformat(timespec="seconds"),
-            ),
+            (user["id"], item["id"], item["price"], datetime.utcnow().isoformat(timespec="seconds")),
         )
-        add_activity(
-            user["id"],
-            f"Purchased {item['name']} for {item['price']} coins",
-        )
-        if result.get("vip") is True:
-            conn.execute("UPDATE users SET vip=1 WHERE id=?", (user["id"],))
-        if result.get("elite") is True:
-            conn.execute("UPDATE users SET elite=1 WHERE id=?", (user["id"],))
+        add_activity(user["id"], f"Purchased {item['name']} for {item['price']} coins")
         conn.commit()
-    except Exception:
+    except Exception as exc:
         conn.rollback()
+        # The wallet debit already succeeded; keep the user informed rather than
+        # pretending the purchase failed. The transaction is still recorded by
+        # the bot wallet itself.
+        return jsonify({
+            "ok": True,
+            "message": f"{item['name']} purchased. Wallet updated.",
+            "warning": str(exc),
+            "user": serialize_user(user, {"balance": debit["balance"], "chat_id": chat_id}),
+        })
 
-    fresh = conn.execute(
-        "SELECT * FROM users WHERE id=?",
-        (user["id"],),
-    ).fetchone()
-    wallet = {
-        "balance": int(result.get("balance", 0)),
-        "chat_id": int(chat_id),
-        "vip": bool(result.get("vip", fresh["vip"])),
-        "elite": bool(result.get("elite", fresh["elite"])),
-    }
+    fresh = conn.execute("SELECT * FROM users WHERE id=?", (user["id"],)).fetchone()
+    try:
+        wallet = wallet_for_user(fresh)
+    except RuntimeError:
+        wallet = {"balance": debit["balance"], "chat_id": chat_id}
 
     return jsonify({
         "ok": True,
-        "message": result.get("message", f"{item['name']} purchased."),
-        "reward": result.get("reward_message", "Reward processed."),
-        "user": serialize_user(fresh, wallet),
+        "message": f"{item['name']} purchased.",
+        "user": serialize_user(fresh, wallet)
     })
 
 
