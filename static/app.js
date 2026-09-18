@@ -9,23 +9,17 @@ if (tg) {
     } catch (e) {}
 }
 
-
 let mode = "login";
 let current = null;
 let loggingOut = false;
 
-
 const $ = (id) => document.getElementById(id);
 
-
 function toast(message) {
-
     const el = $("toast");
-
     if (!el) return;
 
     el.textContent = message;
-
     el.classList.add("show");
 
     clearTimeout(window.__toastTimer);
@@ -35,9 +29,7 @@ function toast(message) {
     }, 2600);
 }
 
-
 async function api(url, options = {}) {
-
     const opts = {
         credentials: "same-origin",
         cache: "no-store",
@@ -48,9 +40,7 @@ async function api(url, options = {}) {
         }
     };
 
-
     const response = await fetch(url, opts);
-
 
     let data = {};
 
@@ -58,18 +48,14 @@ async function api(url, options = {}) {
         data = await response.json();
     } catch (e) {}
 
-
     if (!response.ok) {
-
         const error = new Error(
             data.error || "Request failed"
         );
 
         error.status = response.status;
-
         throw error;
     }
-
 
     return data;
 }
@@ -80,14 +66,11 @@ async function api(url, options = {}) {
 ===================================================== */
 
 function telegramIdentity() {
-
     if (!tg?.initDataUnsafe?.user) {
         return {};
     }
 
-
     const user = tg.initDataUnsafe.user;
-
 
     return {
         telegram_id: String(user.id || ""),
@@ -105,52 +88,40 @@ function telegramIdentity() {
 ===================================================== */
 
 function setMode(next) {
-
     mode = next;
-
 
     document
         .querySelectorAll(".tab")
         .forEach(button => {
-
             button.classList.toggle(
                 "active",
                 button.dataset.auth === next
             );
-
         });
-
 
     const buttonText = $("authButtonText");
 
     if (buttonText) {
-
         buttonText.textContent =
             next === "login"
                 ? "LOGIN"
                 : "CREATE ACCOUNT";
     }
 
-
     const telegramFields =
         $("telegramFields");
 
-
     if (telegramFields) {
-
         telegramFields.classList.toggle(
             "hidden",
             next !== "register"
         );
     }
 
-
     const password =
         $("password");
 
-
     if (password) {
-
         password.autocomplete =
             next === "login"
                 ? "current-password"
@@ -166,12 +137,10 @@ function setMode(next) {
 document
     .querySelectorAll(".tab")
     .forEach(button => {
-
         button.addEventListener(
             "click",
             () => setMode(button.dataset.auth)
         );
-
     });
 
 
@@ -182,9 +151,7 @@ document
 $("authForm").addEventListener(
     "submit",
     async (event) => {
-
         event.preventDefault();
-
 
         const username =
             $("username").value.trim();
@@ -192,9 +159,7 @@ $("authForm").addEventListener(
         const password =
             $("password").value;
 
-
         if (!username || !password) {
-
             toast(
                 "Enter username and password."
             );
@@ -202,23 +167,19 @@ $("authForm").addEventListener(
             return;
         }
 
-
         const body = {
             username,
             password,
             ...telegramIdentity()
         };
 
-
         if (mode === "register") {
-
             body.telegram_username =
                 $("telegramUsername")
                     ?.value
                     .trim() ||
                 body.telegram_username ||
                 "";
-
 
             body.telegram_id =
                 $("telegramId")
@@ -228,15 +189,12 @@ $("authForm").addEventListener(
                 "";
         }
 
-
         const endpoint =
             mode === "login"
                 ? "/api/login"
                 : "/api/register";
 
-
         try {
-
             const data = await api(
                 endpoint,
                 {
@@ -245,12 +203,9 @@ $("authForm").addEventListener(
                 }
             );
 
-
             current = data.user;
 
-
             showPanel();
-
 
             toast(
                 mode === "login"
@@ -259,13 +214,11 @@ $("authForm").addEventListener(
             );
 
         } catch (error) {
-
             toast(
                 error.message ||
                 "Something went wrong."
             );
         }
-
     }
 );
 
@@ -277,14 +230,11 @@ $("authForm").addEventListener(
 $("logoutBtn").addEventListener(
     "click",
     async () => {
-
         if (loggingOut) {
             return;
         }
 
-
         loggingOut = true;
-
 
         const button = $("logoutBtn");
 
@@ -292,9 +242,7 @@ $("logoutBtn").addEventListener(
             button.disabled = true;
         }
 
-
         try {
-
             await api(
                 "/api/logout",
                 {
@@ -303,13 +251,6 @@ $("logoutBtn").addEventListener(
             );
 
         } catch (error) {
-
-            /*
-             * Even if the API fails, clear the
-             * frontend and send the browser to
-             * the guaranteed /logout fallback.
-             */
-
             window.location.replace(
                 "/logout"
             );
@@ -317,38 +258,29 @@ $("logoutBtn").addEventListener(
             return;
         }
 
-
         current = null;
-
 
         $("panelView")
             .classList.add("hidden");
 
-
         $("authView")
             .classList.remove("hidden");
-
 
         $("authForm")
             .reset();
 
-
         setMode("login");
-
 
         window.scrollTo({
             top: 0,
             behavior: "instant"
         });
 
-
         toast(
             "Logged out successfully."
         );
 
-
         loggingOut = false;
-
 
         if (button) {
             button.disabled = false;
@@ -362,20 +294,9 @@ $("logoutBtn").addEventListener(
 ===================================================== */
 
 async function bootAuth() {
-
-    /*
-     * IMPORTANT:
-     *
-     * Never create a Guest user.
-     * Never show dashboard automatically
-     * unless the server confirms a session.
-     */
-
     try {
-
         const data =
             await api("/api/me");
-
 
         if (
             !data.ok ||
@@ -386,15 +307,12 @@ async function bootAuth() {
             );
         }
 
-
         current = data.user;
 
         showPanel();
 
     } catch (error) {
-
         current = null;
-
         showLogin();
     }
 }
@@ -405,17 +323,13 @@ async function bootAuth() {
 ===================================================== */
 
 function showLogin() {
-
     $("panelView")
         .classList.add("hidden");
-
 
     $("authView")
         .classList.remove("hidden");
 
-
     setMode("login");
-
 
     window.scrollTo({
         top: 0,
@@ -429,7 +343,6 @@ function showLogin() {
 ===================================================== */
 
 function statusText(user) {
-
     if (user.elite) {
         return "ELITE";
     }
@@ -447,41 +360,32 @@ function statusText(user) {
 ===================================================== */
 
 function updateHeader() {
-
     if (!current) {
         return;
     }
 
-
     $("displayUsername").textContent =
         "@" + current.username;
 
-
     $("welcome").textContent =
         "Welcome, @" + current.username;
-
 
     $("telegramLabel").textContent =
         current.telegram_username ||
         "Telegram not linked";
 
-
     $("coins").textContent =
         Number(current.coins)
             .toLocaleString();
 
-
     $("level").textContent =
         current.level;
-
 
     const status =
         statusText(current);
 
-
     $("vip").textContent =
         status;
-
 
     $("statusPill").textContent =
         status;
@@ -493,28 +397,21 @@ function updateHeader() {
 ===================================================== */
 
 async function refreshUser() {
-
     const data =
         await api("/api/me");
 
-
     current = data.user;
-
 
     updateHeader();
 
-
     try {
-
         const stats =
             await api("/api/stats");
-
 
         $("rank").textContent =
             "#" + stats.rank;
 
     } catch (error) {
-
         $("rank").textContent =
             "—";
     }
@@ -526,77 +423,190 @@ async function refreshUser() {
 ===================================================== */
 
 function showPanel() {
-
     if (!current) {
-
         showLogin();
-
         return;
     }
-
 
     $("authView")
         .classList.add("hidden");
 
-
     $("panelView")
         .classList.remove("hidden");
 
-
     updateHeader();
-
 
     refreshUser()
         .catch(() => {
-
             current = null;
-
             showLogin();
         });
 
-
     renderPage("home");
-}
-
-
+            }
 /* =====================================================
    PAGE RENDER
 ===================================================== */
 
 async function renderPage(page) {
-
     if (!current) {
-
         showLogin();
-
         return;
     }
-
 
     document
         .querySelectorAll(".nav")
         .forEach(button => {
-
             button.classList.toggle(
                 "active",
                 button.dataset.page === page
             );
-
         });
-
 
     const area =
         $("contentArea");
-
 
     if (!area) {
         return;
     }
 
 
-    if (page === "home") {
+    /* =================================================
+       HOME / TELEGRAM WALLET
+    ================================================= */
 
-        area.innerHTML = "";
+    if (page === "home") {
+        area.innerHTML = `
+            <div class="content-box glass">
+                <p class="eyebrow">TELEGRAM WALLET</p>
+
+                <h3>🪙 Coin Group</h3>
+
+                <p>
+                    Select the Telegram group whose
+                    bot wallet should be shown and
+                    used by this panel.
+                </p>
+
+                <select
+                    id="coinGroupSelect"
+                    style="
+                        width:100%;
+                        padding:12px;
+                        margin:12px 0;
+                        border-radius:10px;
+                    "
+                >
+                    <option value="">
+                        Loading groups...
+                    </option>
+                </select>
+
+                <p id="coinGroupStatus"></p>
+            </div>
+        `;
+
+        try {
+            const data =
+                await api("/api/groups");
+
+            const select =
+                $("coinGroupSelect");
+
+            const status =
+                $("coinGroupStatus");
+
+            const groups =
+                data.groups || [];
+
+            if (!groups.length) {
+                select.innerHTML =
+                    "<option value=\"\">" +
+                    "No Telegram group found" +
+                    "</option>";
+
+                status.textContent =
+                    "Open the group and send a message " +
+                    "so the bot can link your Telegram " +
+                    "account to it.";
+
+            } else {
+                select.innerHTML =
+                    groups.map(group => `
+                        <option
+                            value="${escapeHtml(
+                                String(group.chat_id)
+                            )}"
+                            ${
+                                Number(group.chat_id) ===
+                                Number(data.selected)
+                                    ? "selected"
+                                    : ""
+                            }
+                        >
+                            ${escapeHtml(group.title)}
+                        </option>
+                    `).join("");
+
+                status.textContent =
+                    data.selected
+                        ? "✅ This group wallet is active."
+                        : "Choose a group to activate its wallet.";
+
+                select.addEventListener(
+                    "change",
+                    async () => {
+                        if (!select.value) {
+                            return;
+                        }
+
+                        try {
+                            const result =
+                                await api(
+                                    "/api/groups/select",
+                                    {
+                                        method: "POST",
+
+                                        body:
+                                            JSON.stringify({
+                                                chat_id:
+                                                    Number(
+                                                        select.value
+                                                    )
+                                            })
+                                    }
+                                );
+
+                            current =
+                                result.user;
+
+                            updateHeader();
+
+                            status.textContent =
+                                "✅ Group wallet connected.";
+
+                            toast(
+                                "Telegram wallet connected!"
+                            );
+
+                        } catch (error) {
+                            toast(
+                                error.message
+                            );
+                        }
+                    }
+                );
+            }
+
+        } catch (error) {
+            $("coinGroupSelect").innerHTML =
+                "<option value=\"\">" +
+                "Connection error" +
+                "</option>";
+
+            $("coinGroupStatus").textContent =
+                error.message;
+        }
 
         window.scrollTo({
             top: 0,
@@ -607,13 +617,21 @@ async function renderPage(page) {
     }
 
 
-    if (page === "shop") {
+    /* =================================================
+       SHOP
+    ================================================= */
 
+    if (page === "shop") {
         area.innerHTML = `
             <div class="content-box glass">
-                <p class="eyebrow">STORE</p>
 
-                <h3>🛒 Shop</h3>
+                <p class="eyebrow">
+                    STORE
+                </p>
+
+                <h3>
+                    🛒 Shop
+                </h3>
 
                 <p>
                     Use your coins directly
@@ -626,60 +644,68 @@ async function renderPage(page) {
                 >
                     Loading...
                 </div>
+
             </div>
         `;
 
-
         try {
-
             const data =
                 await api("/api/shop");
 
-
             $("shopGrid").innerHTML =
                 data.items.length
-
                     ? data.items.map(item => `
-
                         <div class="item">
 
                             <h4>
-                                ${escapeHtml(item.name)}
+                                ${escapeHtml(
+                                    item.name
+                                )}
                             </h4>
 
                             <p>
-                                ${escapeHtml(item.description)}
+                                ${escapeHtml(
+                                    item.description
+                                )}
                             </p>
 
                             <div class="price">
                                 🪙
-                                ${Number(item.price).toLocaleString()}
+                                ${
+                                    Number(
+                                        item.price
+                                    ).toLocaleString()
+                                }
                             </div>
 
                             <button
                                 class="buy"
-                                onclick="buyItem(${item.id})"
+                                onclick="buyItem(
+                                    ${item.id}
+                                )"
                             >
                                 BUY NOW
                             </button>
 
                         </div>
-
                     `).join("")
 
                     : "<p>Shop is empty.</p>";
 
         } catch (error) {
-
             $("shopGrid").innerHTML =
-                `<p>${escapeHtml(error.message)}</p>`;
+                `<p>${escapeHtml(
+                    error.message
+                )}</p>`;
         }
-
     }
 
 
-    if (page === "rewards") {
+    /* =================================================
+       REWARDS
+    ================================================= */
 
+    if (page === "rewards") {
         area.innerHTML = `
             <div class="content-box glass">
 
@@ -699,7 +725,9 @@ async function renderPage(page) {
 
                 <button
                     class="buy"
-                    onclick="toast('Reward connection is being prepared.')"
+                    onclick="toast(
+                        'Reward connection is being prepared.'
+                    )"
                 >
                     CLAIM REWARD
                 </button>
@@ -709,8 +737,11 @@ async function renderPage(page) {
     }
 
 
-    if (page === "missions") {
+    /* =================================================
+       MISSIONS
+    ================================================= */
 
+    if (page === "missions") {
         area.innerHTML = `
             <div class="content-box glass">
 
@@ -730,7 +761,9 @@ async function renderPage(page) {
 
                 <button
                     class="buy"
-                    onclick="toast('Mission connection is being prepared.')"
+                    onclick="toast(
+                        'Mission connection is being prepared.'
+                    )"
                 >
                     VIEW MISSIONS
                 </button>
@@ -740,11 +773,13 @@ async function renderPage(page) {
     }
 
 
-    if (page === "referral") {
+    /* =================================================
+       REFERRAL
+    ================================================= */
 
+    if (page === "referral") {
         const referral =
             "SAK-" + current.id;
-
 
         area.innerHTML = `
             <div class="content-box glass">
@@ -764,14 +799,20 @@ async function renderPage(page) {
                 <div class="item">
 
                     <strong>
-                        ${escapeHtml(referral)}
+                        ${escapeHtml(
+                            referral
+                        )}
                     </strong>
 
                     <br>
 
                     <button
                         class="buy"
-                        onclick="copyText('${escapeHtml(referral)}')"
+                        onclick="copyText(
+                            '${escapeHtml(
+                                referral
+                            )}'
+                        )"
                     >
                         COPY CODE
                     </button>
@@ -781,10 +822,11 @@ async function renderPage(page) {
             </div>
         `;
     }
-
+        /* =================================================
+       STATS / ACTIVITY
+    ================================================= */
 
     if (page === "stats") {
-
         area.innerHTML = `
             <div class="content-box glass">
 
@@ -803,47 +845,48 @@ async function renderPage(page) {
             </div>
         `;
 
-
         try {
-
             const data =
                 await api("/api/activity");
 
-
             if (!data.activity.length) {
-
                 $("activityList").innerHTML =
                     "<p>No activity yet.</p>";
 
             } else {
-
                 $("activityList").innerHTML =
                     data.activity.map(item => `
-
                         <div class="activity">
 
-                            ${escapeHtml(item.text)}
+                            ${escapeHtml(
+                                item.text
+                            )}
 
                             <time>
-                                ${escapeHtml(item.created_at)}
+                                ${escapeHtml(
+                                    item.created_at
+                                )}
                                 UTC
                             </time>
 
                         </div>
-
                     `).join("");
             }
 
         } catch (error) {
-
             $("activityList").innerHTML =
-                `<p>${escapeHtml(error.message)}</p>`;
+                `<p>${escapeHtml(
+                    error.message
+                )}</p>`;
         }
     }
 
 
-    if (page === "settings") {
+    /* =================================================
+       SETTINGS
+    ================================================= */
 
+    if (page === "settings") {
         area.innerHTML = `
             <div class="content-box glass">
 
@@ -901,38 +944,37 @@ async function renderPage(page) {
 ===================================================== */
 
 async function buyItem(id) {
-
     try {
-
         const data =
             await api(
                 "/api/shop/buy",
                 {
                     method: "POST",
-                    body: JSON.stringify({
-                        item_id: id
-                    })
+
+                    body:
+                        JSON.stringify({
+                            item_id: id
+                        })
                 }
             );
 
-
-        current = data.user;
-
+        current =
+            data.user;
 
         updateHeader();
 
-
         await refreshUser();
 
-
-        toast(data.message);
-
+        toast(
+            data.message
+        );
 
         renderPage("shop");
 
     } catch (error) {
-
-        toast(error.message);
+        toast(
+            error.message
+        );
     }
 }
 
@@ -942,42 +984,41 @@ async function buyItem(id) {
 ===================================================== */
 
 async function changePassword() {
-
     const oldPassword =
         $("oldPass").value;
 
     const newPassword =
         $("newPass").value;
 
-
     try {
-
         const data =
             await api(
                 "/api/settings/password",
                 {
                     method: "POST",
 
-                    body: JSON.stringify({
-                        old_password:
-                            oldPassword,
+                    body:
+                        JSON.stringify({
+                            old_password:
+                                oldPassword,
 
-                        new_password:
-                            newPassword
-                    })
+                            new_password:
+                                newPassword
+                        })
                 }
             );
 
-
-        toast(data.message);
-
+        toast(
+            data.message
+        );
 
         $("oldPass").value = "";
         $("newPass").value = "";
 
     } catch (error) {
-
-        toast(error.message);
+        toast(
+            error.message
+        );
     }
 }
 
@@ -987,12 +1028,10 @@ async function changePassword() {
 ===================================================== */
 
 function copyText(text) {
-
     if (
         navigator.clipboard &&
         navigator.clipboard.writeText
     ) {
-
         navigator.clipboard
             .writeText(text)
             .then(() => {
@@ -1003,18 +1042,14 @@ function copyText(text) {
             });
 
     } else {
-
         toast(text);
     }
 }
-
-
 /* =====================================================
    HTML ESCAPE
 ===================================================== */
 
 function escapeHtml(value) {
-
     return String(value)
         .replace(
             /[&<>"']/g,
@@ -1036,18 +1071,14 @@ function escapeHtml(value) {
 document
     .querySelectorAll("[data-page]")
     .forEach(button => {
-
         button.addEventListener(
             "click",
             () => {
-
                 renderPage(
                     button.dataset.page
                 );
-
             }
         );
-
     });
 
 
@@ -1058,10 +1089,7 @@ document
 document.addEventListener(
     "DOMContentLoaded",
     () => {
-
         setMode("login");
-
         bootAuth();
-
     }
 );
