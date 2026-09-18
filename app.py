@@ -2,6 +2,9 @@ import os
 import sqlite3
 import secrets
 import json
+import hmac
+import hashlib
+import time
 import urllib.parse
 import urllib.request
 import urllib.error
@@ -31,6 +34,8 @@ DB_PATH = os.environ.get(
 # Bot service is the single source of truth for group coins.
 BOT_API_URL = os.environ.get("BOT_API_URL", "").strip().rstrip("/")
 BOT_API_SECRET = os.environ.get("BOT_API_SECRET", "").strip()
+# Telegram WebApp identity verification. Set this to the same bot token used by the bot service.
+TELEGRAM_BOT_TOKEN = os.environ.get("BOT_TOKEN", "").strip()
 
 
 # =========================================================
@@ -170,6 +175,22 @@ def login_required(fn):
                 "error": "LOGIN_REQUIRED"
             }), 401
 
+        user = current_user()
+        try:
+            tg = telegram_webapp_user()
+        except RuntimeError as exc:
+            session.clear()
+            return jsonify({"ok": False, "error": str(exc)}), 401
+
+        if not user or not user["telegram_id"] or int(user["telegram_id"]) != int(tg["id"]):
+            session.clear()
+            response = jsonify({
+                "ok": False,
+                "error": "TELEGRAM_ACCOUNT_CHANGED"
+            })
+            response.headers["Cache-Control"] = "no-store"
+            return response, 401
+
         return fn(*args, **kwargs)
 
     return wrapper
@@ -218,24 +239,97 @@ def bot_request(path, method="GET", payload=None, query=None):
         data = json.dumps(payload).encode("utf-8")
         headers["Content-Type"] = "application/json"
 
-    req = urllib.request.Request(url, data=data, headers=headers, method=method)
-    try:
-        with urllib.request.urlopen(req, timeout=8) as response:
-            body = response.read().decode("utf-8")
-            result = json.loads(body or "{}")
-    except urllib.error.HTTPError as exc:
+    last_error = None
+    # Render services can briefly sleep; retry so a cold bot service does not
+    # become a fake 0-coin wallet in the panel.
+    for attempt in range(2):
+        req = urllib.request.Request(url, data=data, headers=headers, method=method)
         try:
-            result = json.loads(exc.read().decode("utf-8") or "{}")
-        except Exception:
-            result = {}
-        message = result.get("error", "Bot API request failed.")
-        raise RuntimeError(message)
-    except Exception as exc:
-        raise RuntimeError(f"Bot connection failed: {exc}")
+            with urllib.request.urlopen(req, timeout=20) as response:
+                body = response.read().decode("utf-8")
+                result = json.loads(body or "{}")
 
-    if not result.get("ok"):
-        raise RuntimeError(result.get("error", "Bot API request failed."))
-    return result
+            if not result.get("ok"):
+                raise RuntimeError(result.get("error", "Bot API request failed."))
+            return result
+
+        except urllib.error.HTTPError as exc:
+            try:
+                result = json.loads(exc.read().decode("utf-8") or "{}")
+            except Exception:
+                result = {}
+            message = result.get("error", f"Bot API HTTP {exc.code}")
+            last_error = RuntimeError(message)
+        except Exception as exc:
+            last_error = RuntimeError(f"Bot connection failed: {exc}")
+
+        if attempt == 0:
+            time.sleep(1)
+
+    raise last_error or RuntimeError("Bot API request failed.")
+
+
+def telegram_webapp_user():
+    """Verify Telegram WebApp initData and return the trusted Telegram user."""
+    if not TELEGRAM_BOT_TOKEN:
+        raise RuntimeError("Telegram WebApp verification is not configured on the panel.")
+
+    raw = request.headers.get("X-Telegram-Init-Data", "").strip()
+    if not raw:
+        raise RuntimeError("Open the panel from Telegram to continue.")
+
+    params = urllib.parse.parse_qs(raw, keep_blank_values=True)
+    supplied_hash = params.pop("hash", [""])[0]
+    if not supplied_hash:
+        raise RuntimeError("Invalid Telegram WebApp data.")
+
+    pairs = []
+    for key in sorted(params):
+        pairs.append(f"{key}={params[key][0]}")
+    data_check_string = "\n".join(pairs)
+
+    secret_key = hmac.new(
+        b"WebAppData",
+        TELEGRAM_BOT_TOKEN.encode("utf-8"),
+        hashlib.sha256,
+    ).digest()
+    expected_hash = hmac.new(
+        secret_key,
+        data_check_string.encode("utf-8"),
+        hashlib.sha256,
+    ).hexdigest()
+
+    if not hmac.compare_digest(expected_hash, supplied_hash):
+        raise RuntimeError("Invalid Telegram WebApp signature.")
+
+    try:
+        auth_date = int(params.get("auth_date", ["0"])[0])
+    except (TypeError, ValueError):
+        auth_date = 0
+    if not auth_date or abs(time.time() - auth_date) > 86400:
+        raise RuntimeError("Telegram WebApp session expired. Reopen the panel from Telegram.")
+
+    try:
+        tg_user = json.loads(params.get("user", ["{}"]) [0])
+        tg_id = int(tg_user.get("id", 0))
+    except (TypeError, ValueError, json.JSONDecodeError):
+        tg_user, tg_id = {}, 0
+
+    if tg_id <= 0:
+        raise RuntimeError("Telegram account could not be verified.")
+
+    return {
+        "id": tg_id,
+        "username": tg_user.get("username") or "",
+        "first_name": tg_user.get("first_name") or "",
+    }
+
+
+def verified_telegram_id():
+    try:
+        return int(telegram_webapp_user()["id"])
+    except Exception:
+        return None
 
 
 def user_coin_chat_id(user):
@@ -245,74 +339,63 @@ def user_coin_chat_id(user):
         telegram_id = int(user["telegram_id"])
     except (TypeError, ValueError):
         return None
+
     selected = user["coin_chat_id"] if "coin_chat_id" in user.keys() else None
     try:
         groups = bot_request("/panel-api/groups", query={"user_id": telegram_id}).get("groups", [])
     except Exception:
-        return selected
+        return int(selected) if selected else None
+
     valid = {int(group["chat_id"]) for group in groups}
     if selected and int(selected) in valid:
         return int(selected)
+
+    # If the Telegram account belongs to exactly one bot group, select it
+    # automatically so the wallet cannot remain at a misleading zero.
     if len(groups) == 1:
         new_chat = int(groups[0]["chat_id"])
-        db().execute("UPDATE users SET coin_chat_id=? WHERE id=?", (new_chat, user["id"]))
-        db().commit()
+        conn = db()
+        conn.execute("UPDATE users SET coin_chat_id=? WHERE id=?", (new_chat, user["id"]))
+        conn.commit()
         return new_chat
+
     return None
 
 
 def wallet_for_user(user):
-    """Return the bot wallet without making authentication depend on the bot.
-
-    The panel account is stored in its own database. A temporary bot/API outage
-    must not turn a successful register/login into an HTTP 500 after the user
-    row has already been committed.
-    """
+    empty = {
+        "chat_id": None,
+        "balance": 0,
+        "vip": False,
+        "elite": False,
+        "groups": [],
+        "wallet_online": False,
+    }
     if not user or not user["telegram_id"]:
-        return {
-            "chat_id": None,
-            "balance": int(user["coins"]) if user else 0,
-            "vip": bool(user["vip"]) if user else False,
-            "elite": bool(user["elite"]) if user else False,
-            "groups": [],
-            "wallet_online": False,
-        }
+        empty["wallet_error"] = "Telegram account is not linked to this panel account."
+        return empty
 
     try:
+        telegram_id = int(user["telegram_id"])
         groups = bot_request(
             "/panel-api/groups",
-            query={"user_id": int(user["telegram_id"])},
+            query={"user_id": telegram_id},
         ).get("groups", [])
         chat_id = user_coin_chat_id(user)
+
         if not chat_id:
-            return {
-                "chat_id": None,
-                "balance": int(user["coins"]),
-                "vip": bool(user["vip"]),
-                "elite": bool(user["elite"]),
-                "groups": groups,
-                "wallet_online": True,
-            }
+            empty.update({"groups": groups, "wallet_online": True})
+            empty["wallet_error"] = "Select your Telegram group to show its coin balance."
+            return empty
+
         result = bot_request(
             "/panel-api/wallet",
-            query={
-                "chat_id": int(chat_id),
-                "user_id": int(user["telegram_id"]),
-            },
+            query={"chat_id": int(chat_id), "user_id": telegram_id},
         )
         return {**result, "groups": groups, "wallet_online": True}
-    except (RuntimeError, ValueError, TypeError, KeyError) as exc:
-        # Authentication remains usable when the bot service is temporarily
-        # unavailable. Do not present the stale local coins as authoritative.
-        return {
-            "chat_id": user["coin_chat_id"],
-            "balance": int(user["coins"]),
-            "vip": bool(user["vip"]),
-            "elite": bool(user["elite"]),
-            "groups": [],
-            "wallet_online": False,
-            "wallet_error": str(exc),
-        }
+    except Exception as exc:
+        empty["wallet_error"] = str(exc)
+        return empty
 
 
 def serialize_user(user, wallet=None):
@@ -333,9 +416,9 @@ def serialize_user(user, wallet=None):
         "level": user["level"],
         "vip": bool(wallet.get("vip", user["vip"])),
         "elite": bool(wallet.get("elite", user["elite"])),
-        "wallet_online": bool(wallet.get("wallet_online", True)),
-        "wallet_warning": wallet.get("wallet_error"),
         "created_at": user["created_at"],
+        "wallet_online": bool(wallet.get("wallet_online", False)),
+        "wallet_warning": wallet.get("wallet_error"),
     }
 
 
@@ -381,13 +464,13 @@ def register():
         data.get("password", "")
     )
 
-    telegram_id = str(
-        data.get("telegram_id", "")
-    ).strip() or None
+    try:
+        tg = telegram_webapp_user()
+    except RuntimeError as exc:
+        return jsonify({"ok": False, "error": str(exc)}), 401
 
-    telegram_username = str(
-        data.get("telegram_username", "")
-    ).strip() or None
+    telegram_id = str(tg["id"])
+    telegram_username = ("@" + tg["username"]) if tg.get("username") else None
 
     if len(username) < 3 or len(username) > 32:
 
@@ -522,38 +605,41 @@ def login():
             "error": "Invalid username or password."
         }), 401
 
-    # When opened as a Telegram Web App, bind the existing panel
-    # account to the Telegram identity supplied by the Web App.
-    telegram_id = str(data.get("telegram_id", "")).strip() or None
-    telegram_username = str(data.get("telegram_username", "")).strip() or None
+    try:
+        tg = telegram_webapp_user()
+    except RuntimeError as exc:
+        return jsonify({"ok": False, "error": str(exc)}), 401
 
-    if telegram_id:
-        existing = conn.execute(
-            "SELECT id, username FROM users WHERE telegram_id=? AND id!=?",
-            (telegram_id, user["id"])
-        ).fetchone()
+    incoming_tg_id = str(tg["id"])
+    incoming_tg_username = ("@" + tg["username"]) if tg.get("username") else None
 
-        if existing:
+    # A panel account is permanently bound to its Telegram account once linked.
+    # This prevents another Telegram account on the same device from inheriting it.
+    if user["telegram_id"] and str(user["telegram_id"]) != incoming_tg_id:
+        return jsonify({
+            "ok": False,
+            "error": "This panel account is linked to another Telegram account."
+        }), 403
+
+    if not user["telegram_id"]:
+        try:
+            conn.execute(
+                "UPDATE users SET telegram_id=?, telegram_username=? WHERE id=?",
+                (incoming_tg_id, incoming_tg_username, user["id"]),
+            )
+            conn.commit()
+            user = conn.execute("SELECT * FROM users WHERE id=?", (user["id"],)).fetchone()
+        except sqlite3.IntegrityError:
             return jsonify({
                 "ok": False,
                 "error": "This Telegram account is already linked to another panel account."
             }), 409
-
-        if user["telegram_id"] and str(user["telegram_id"]) != telegram_id:
-            return jsonify({
-                "ok": False,
-                "error": "This panel account is already linked to a different Telegram account."
-            }), 409
-
+    else:
         conn.execute(
-            "UPDATE users SET telegram_id=?, telegram_username=? WHERE id=?",
-            (telegram_id, telegram_username or user["telegram_username"], user["id"])
+            "UPDATE users SET telegram_username=? WHERE id=?",
+            (incoming_tg_username or user["telegram_username"], user["id"]),
         )
-
-        user = conn.execute(
-            "SELECT * FROM users WHERE id=?",
-            (user["id"],)
-        ).fetchone()
+        conn.commit()
 
     # Clear any old session first.
     session.clear()
@@ -647,16 +733,11 @@ def me():
 
     wallet = wallet_for_user(user)
 
-    response = {
+    return jsonify({
         "ok": True,
-        "user": serialize_user(user, wallet)
-    }
-    if not wallet.get("wallet_online", True):
-        response["wallet_warning"] = wallet.get(
-            "wallet_error",
-            "Telegram wallet is temporarily unavailable."
-        )
-    return jsonify(response)
+        "user": serialize_user(user, wallet),
+        "wallet_warning": wallet.get("wallet_error"),
+    })
 
 
 @app.get("/api/groups")
@@ -667,9 +748,10 @@ def groups():
         return jsonify({"ok": True, "groups": []})
     try:
         result = bot_request("/panel-api/groups", query={"user_id": int(user["telegram_id"])})
+        selected = user_coin_chat_id(user)
     except (ValueError, RuntimeError) as exc:
         return jsonify({"ok": False, "error": str(exc)}), 503
-    return jsonify({"ok": True, "groups": result.get("groups", []), "selected": user["coin_chat_id"]})
+    return jsonify({"ok": True, "groups": result.get("groups", []), "selected": selected})
 
 
 @app.post("/api/groups/select")
@@ -693,11 +775,8 @@ def select_group():
     conn.execute("UPDATE users SET coin_chat_id=? WHERE id=?", (chat_id, user["id"]))
     conn.commit()
     fresh = conn.execute("SELECT * FROM users WHERE id=?", (user["id"],)).fetchone()
-    try:
-        wallet = wallet_for_user(fresh)
-    except RuntimeError as exc:
-        return jsonify({"ok": False, "error": str(exc)}), 503
-    return jsonify({"ok": True, "user": serialize_user(fresh, wallet)})
+    wallet = wallet_for_user(fresh)
+    return jsonify({"ok": True, "user": serialize_user(fresh, wallet), "wallet_warning": wallet.get("wallet_error")})
 
 
 # =========================================================
